@@ -39,6 +39,7 @@ class SessionLifecycleTests(unittest.TestCase):
         session = manager.create(RunConfig(seed=5))
         self.assertEqual(self.finish(session)["status"], "completed")
         self.assertEqual(json.loads((session.folder / "results.json").read_text()), {"seed": 5})
+        self.assertEqual(json.loads((session.folder / "config.json").read_text())["seed"], 5)
         events, done = session.wait_events(1)
         self.assertTrue(done)
         self.assertEqual([row["stage"] for row in events], ["started", "completed"])

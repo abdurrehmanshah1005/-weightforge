@@ -95,6 +95,8 @@ class SessionManager:
             identity = uuid.uuid4().hex
             folder = self.root / identity
             folder.mkdir(parents=True, exist_ok=False)
+            (folder / "config.json").write_text(
+                json.dumps(asdict(config), indent=2, allow_nan=False), encoding="utf-8")
             session = Session(identity, config, folder)
             self.sessions[identity] = session
             session.emit("queued", message="Waiting for the experiment worker")
