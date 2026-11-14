@@ -6,8 +6,11 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - weightforge-runs:/data/runs
+      - ./runs/data:/data/datasets:ro
     environment:
       WEIGHTFORGE_RUNS_DIR: /data/runs
+      WEIGHTFORGE_MODELS_DIR: /data/runs/models
+      WEIGHTFORGE_DATA_DIR: /data/datasets
     init: true
     stop_grace_period: 30s
     restart: unless-stopped

@@ -15,6 +15,7 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class RunConfig:
+    model_id: str = "xor"
     provider: str = "guided"
     budget: int = 12
     seed: int = 42
@@ -23,6 +24,12 @@ class RunConfig:
     max_changed: int = 8
 
     def __post_init__(self):
+        if self.model_id != "xor":
+            if (type(self.model_id) is not str or len(self.model_id) != 32
+                    or any(c not in "0123456789abcdef" for c in self.model_id)):
+                raise ValueError("Invalid model ID")
+            if self.provider != "random":
+                raise ValueError("MNIST currently supports random sparse search")
         if self.provider not in ("guided", "random"):
             raise ValueError("Provider must be guided or random")
         for name, low, high in (("budget", 1, 50), ("seed", 0, 2**31 - 1),
@@ -155,6 +162,24 @@ def run_experiment(session):
     from .providers import RandomProvider
 
     config = session.config
+    if config.model_id != "xor":
+        import os
+
+        from . import mnist
+
+        checkpoint = Path(os.environ.get("WEIGHTFORGE_MODELS_DIR", "runs/models")) / (config.model_id + ".pt")
+        def model():
+            return mnist.load_checkpoint(checkpoint)
+        train_x, train_y = mnist.dataset()
+        test_x, test_y = mnist.dataset(False)
+        validation_data = (train_x[12000:13000].float() / 255, train_y[12000:13000])
+        holdout_data = (test_x[:2000].float() / 255, test_y[:2000])
+        def dataset(seed, count):
+            return validation_data if count == 128 else holdout_data
+
+        def observation(current):
+            return {"task": "MNIST classification", "inspection": current.inspect(),
+                    "max_delta": current.limits.max_delta}
     limits = Limits(max_delta=config.max_delta, max_changed=config.max_changed)
     adapter = TorchAdapter(model(), limits)
     validation = dataset(config.seed, 128)
@@ -173,7 +198,7 @@ def run_experiment(session):
     for name, p in adapter.parameters.items():
         digest.update(name.encode())
         digest.update(json.dumps(p.detach().flatten().tolist()).encode())
-    session.emit("started", initial=initial, model={"name": "Analytical XOR", "parameters": 9,
+    session.emit("started", initial=initial, model={"name": "Analytical XOR" if config.model_id == "xor" else "MNIST MLP", "parameters": sum(p.numel() for p in adapter.parameters.values()),
                  "weight_bytes": sum(p.numel() * p.element_size() for p in adapter.parameters.values()),
                  "observation_bytes": observation_size, "context_limit": limits.context_bytes},
                  message="Fresh model loaded; validation measured")

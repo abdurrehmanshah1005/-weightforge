@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import threading
+import uuid
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
@@ -25,6 +26,43 @@ def create_app(manager=None):
 
     app = FastAPI(title="WeightForge Lab", lifespan=lifespan)
     app.state.sessions = sessions
+    model_root = Path(os.environ.get("WEIGHTFORGE_MODELS_DIR", "runs/models"))
+
+    @app.get("/models")
+    def models():
+        return [{"id": p.stem, "name": "MNIST MLP", "bytes": p.stat().st_size}
+                for p in model_root.glob("*.pt")]
+
+    @app.post("/models", status_code=201)
+    async def import_model(request: Request):
+        from .mnist import load_checkpoint
+
+        model_root.mkdir(parents=True, exist_ok=True)
+        identity = uuid.uuid4().hex
+        path = model_root / (identity + ".upload")
+        size = 0
+        try:
+            with path.open("wb") as output:
+                async for chunk in request.stream():
+                    size += len(chunk)
+                    if size > 2_000_000:
+                        raise ValueError("Maximum checkpoint size is 2 MB")
+                    output.write(chunk)
+            await asyncio.to_thread(load_checkpoint, path)
+            path.rename(model_root / (identity + ".pt"))
+            return {"id": identity, "name": "MNIST MLP", "bytes": size}
+        except Exception as exc:
+            path.unlink(missing_ok=True)
+            raise HTTPException(422, detail="Checkpoint rejected: expected a valid MNIST MLP float32 state_dict") from exc
+
+    @app.get("/experiments")
+    def saved_experiments():
+        rows = []
+        for path in sorted(sessions.root.glob("*/results.json"), reverse=True)[:100]:
+            result = json.loads(path.read_text(encoding="utf-8"))
+            rows.append({"id": path.parent.name, "config": result["config"],
+                         "initial": result["initial"], "retained": result["retained"]})
+        return rows
     legacy = {}
     legacy_lock = threading.Lock()
 
@@ -105,7 +143,10 @@ def create_app(manager=None):
     async def events(identity: str, request: Request, after: int = 0):
         session = get_session(identity)
         try:
-            cursor = max(after, int(request.headers.get("last-event-id", "0")))
+            previous = int(request.headers.get("last-event-id", "0"))
+            if after < 0 or previous < 0:
+                raise ValueError("Negative cursor")
+            cursor = max(after, previous)
         except ValueError as exc:
             raise HTTPException(422, detail="Invalid event cursor") from exc
         if cursor < 0 or cursor > len(session.events):
@@ -133,5 +174,10 @@ def create_app(manager=None):
         @app.get("/", include_in_schema=False)
         def dashboard():
             return FileResponse(static / "index.html")
+
+        @app.get("/library", include_in_schema=False)
+        @app.get("/results", include_in_schema=False)
+        def library():
+            return FileResponse(static / "library.html")
 
     return app

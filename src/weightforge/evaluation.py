@@ -25,6 +25,11 @@ def evaluate(adapter, data, batch_size=64):
             for start in range(0, len(x), batch_size):
                 target = y[start : start + batch_size]
                 logits = adapter.model(x[start : start + batch_size])
+                multiclass = logits.ndim == 2 and logits.shape[1] > 1 and target.ndim == 1
+                if multiclass:
+                    loss += nn.functional.cross_entropy(logits, target, reduction="sum").item()
+                    correct += int((logits.argmax(1) == target).sum().item())
+                    continue
                 if logits.shape != target.shape:
                     raise ValueError("Expected binary logits matching target shape")
                 loss += nn.functional.binary_cross_entropy_with_logits(
