@@ -7,7 +7,7 @@ Providers only propose JSON. Evaluation decides whether validation loss strictly
 decreases without reducing validation accuracy. The demo runner evaluates holdout
 after search; its results never enter acceptance. The API uses the same engine.
 
-The MVP has no database, background queue, multiuser server, training system or
+The MVP has no database, external task queue, multiuser server, training system or
 automated research agent. Model loading is caller-owned; the demo constructs a
 known fixture. This avoids unsafe arbitrary checkpoint uploads and unnecessary
 framework infrastructure.
@@ -57,6 +57,24 @@ weights. Many transformers require a dedicated adapter. Sharding, CPU/GPU
 offloading and distributed inference need ownership and synchronization designs
 that this MVP does not pretend to implement. A language-model evaluator also
 needs batching/tokenization, locality, efficacy, perplexity and held-out task tests.
+
+## Live sessions and frontend
+
+The dashboard is plain HTML/CSS/JavaScript packaged with the Python application.
+FastAPI serves assets, accepts bounded run configuration and streams sequentially
+numbered SSE events. No hosted service or frontend build process is involved.
+
+Each session has its own model, sparse origins, validation seed and artifact
+directory. A single worker serializes experiments; at most two can be active or
+queued. Up to twenty process-local session records are retained. Cooperative
+cancellation is checked between operations and inside the candidate transaction.
+Exceptions there trigger the existing rollback guarantee. Completed artifacts
+persist; live sessions are not recovered after a process restart.
+
+The browser receives real operation events, never executes weight edits, and
+keeps candidate versus incumbent metrics separate. SSE IDs support reconnect
+replay and duplicate filtering. Final holdout appears only in the terminal result.
+The original manual sandbox endpoints remain isolated from dashboard experiments.
 
 Experiment 02 inspired the additive flat-index schema, loss-plus-accuracy rule,
 manual provider boundary, seeded random comparison and final-only holdout. Its

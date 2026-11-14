@@ -1,25 +1,25 @@
 # Publish the prepared repository
 
-The connected account was identified as `abdurrehmanshah1005`. The available
-GitHub connector did not expose repository creation or file-push operations, so
-no remote repository was created and no code was published automatically.
+The user created `abdurrehmanshah1005/-weightforge` and configured it as `origin`.
+Feature commits are prepared locally on `main`. The latest automatic push could
+not connect to GitHub, and the session's approval policy rejected expanded access.
+No successful push of the dashboard milestone is claimed.
 
-Create an **empty** repository named `weightforge` under your own account:
-[Create repository on GitHub](https://github.com/new).
-Suggested description: "Laptop-first PyTorch research harness for transactional sparse weight edits."
-Choose visibility as you prefer. Do not add a README, license or .gitignore there;
-this local repository already has project files. No license is selected yet;
-choose one before inviting open-source reuse.
+The repository already exists; do not create another one or add `origin` again.
+No license is selected yet; choose one before inviting open-source reuse.
 
 From this repository folder in PowerShell:
 
 ```powershell
 git status
-git remote add origin https://github.com/abdurrehmanshah1005/weightforge.git
-git push -u origin main
+git log --oneline -6
+git push origin main
 ```
 
-Use GitHub's normal credential prompt. If you choose another repository name,
-change the URL. No credentials or tokens belong in source files or remote URLs.
-The initial local commit contains only source, tests, documentation and lockfile;
-generated results, model weights, secrets and virtual environments are ignored.
+Use GitHub's normal credential prompt. Then open the repository's **Actions** tab
+and inspect the Windows/Linux test jobs and Linux container smoke check. Current
+session verification limits are recorded in `docs/verification.md`; adding a CI
+workflow does not mean that it has run or passed.
+
+Generated results, model weights, secrets and virtual environments are ignored.
+The configured URL is `https://github.com/abdurrehmanshah1005/-weightforge.git`.

@@ -1,5 +1,47 @@
 # Verification
 
+## Dashboard and container milestone — 14 November 2026
+
+Actually executed in this session:
+
+- Five standard-library session lifecycle tests passed: persistence/replay,
+  queue cancellation, per-run isolation, capacity/eviction and configuration checks.
+- Nine Node tests passed: separate candidate/retained curves, rejected-edit
+  stability, duplicate replay filtering, final-only holdout presentation, invalid
+  proposals, terminal states, DOM initialization, controls/events/review/export/reset
+  wiring and accessible chart metric switching. These use declared event fixtures.
+- Python source compilation and JavaScript syntax checks passed.
+- `docker compose config --quiet` validated the Compose configuration.
+- The dashboard loaded in the in-app browser at a narrow viewport. The static
+  visual QA server deliberately had no inference service; the interface displayed
+  service unavailability and disabled experiment controls correctly.
+
+Not executed successfully in this session:
+
+- The full Python suite, new real-PyTorch session checks and HTTP/SSE integration
+  tests: this session could not start the existing Python environment or access
+  parts of its installed dependencies/native PyTorch libraries. A bundled Python
+  runtime could run dependency-free lifecycle tests and compile the source, but
+  could not load those installed libraries. The earlier 30-test result below is
+  historical and is not a test result for this new milestone.
+- Ruff: the installed executable was inaccessible in the current session.
+- Docker build and live container smoke: Docker Desktop's engine was not running.
+  Compose validation does not establish that the image builds or runs.
+
+The new Python/API/static-asset tests and a real container accept/rollback check
+are wired into GitHub Actions. Run them in the user's normal terminal or CI before
+treating this milestone as fully integration-verified:
+
+```powershell
+uv run --locked ruff check .
+uv run --locked python -m pytest -q
+node --test tests/frontend.test.mjs tests/frontend-dom.test.mjs
+docker compose up --build -d --wait
+uv run --locked python scripts/container_smoke.py
+```
+
+## Initial CLI milestone (historical)
+
 Verified on Windows, 14 November 2026, with Python 3.12.14 and PyTorch 2.15.0+cpu
 using this repository's separate environment and committed uv lockfile.
 

@@ -8,6 +8,33 @@ This is a runnable MVP, not evidence that arbitrary LLM-generated edits improve
 language models. The default proposer is seeded random search. No paid service,
 API key, downloaded model, GPU, optimizer, or training is needed.
 
+## Interactive experiment lab
+
+```powershell
+uv sync --locked
+uv run --locked python -m uvicorn weightforge.api:create_app --factory --host 127.0.0.1 --port 8000 --workers 1
+```
+
+Open [WeightForge Lab](http://127.0.0.1:8000/). Choose **Guided demonstration**,
+two proposals and seed 42, then start. Watch the first edit improve validation;
+its reversal is rejected and the improved model is preserved. Inspect the history,
+switch loss/accuracy, review individual edits and download final results.
+
+The guided proposer is a declared fixture-specific heuristic, not an LLM. The
+dashboard uses actual server events and measured metrics, with separate candidate
+and retained curves, cooperative stop, seeded random baselines and final-only
+holdout. XOR may finish quickly; the history preserves every decision.
+
+Prefer Docker? Start Docker Desktop and run:
+
+```powershell
+docker compose up --build -d --wait
+```
+
+The same dashboard is available at port 8000. Results persist in a named volume.
+See [dashboard usage and semantics](docs/dashboard.md) and
+[Docker instructions](docs/docker.md).
+
 ## Windows / Python 3.12 quick start
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/) if needed,
@@ -83,10 +110,12 @@ $body = Get-Content examples/proposal.json -Raw
 Invoke-RestMethod http://127.0.0.1:8000/proposals -Method Post -ContentType 'application/json' -Body $body
 ```
 
-The service owns an in-memory demo model, serializes access, and resets on restart.
-Use one process/worker. It has no authentication or durable run storage and is
-intended for loopback development. The CLI produces reproducible run artifacts;
-the API is an interactive exploration interface.
+These original endpoints use an independent in-memory manual sandbox. Dashboard
+runs use fresh isolated models and persist artifacts under `runs/web/` (or
+`WEIGHTFORGE_RUNS_DIR`). One worker executes experiments and a bounded registry
+retains their replayable live events. Use one process/worker. Session identities
+reset on restart; saved JSON remains on disk. The service has no authentication
+and is intended for loopback development.
 
 ## Adapt another model
 
@@ -118,6 +147,15 @@ proposer protocol, CLI/demo and API. `tests/` checks atomic validation, rollback
 exception recovery, cumulative limits, bounded inspection, sparse undo storage,
 overflow, unsupported layouts, seeded run repeatability and API integration.
 GitHub Actions runs lint, tests and a CLI smoke run on Windows and Linux.
+Frontend state/rendering checks use Node 24:
+
+```powershell
+node --test tests/frontend.test.mjs tests/frontend-dom.test.mjs
+```
+
+A separate Linux CI job builds Docker and checks the packaged dashboard, real
+inference, rollback and exported results. See the verification document for what
+was actually executed locally versus what remains for CI.
 
 See [architecture](docs/architecture.md), [research limitations](docs/research.md),
 [verification](docs/verification.md), and [publishing steps](docs/publishing.md).

@@ -58,7 +58,7 @@ back if cancellation is observed during candidate evaluation. Already accepted
 edits remain in that run's discarded in-memory model; other sessions are unaffected.
 No work runs in the browser and no pending tensor transaction survives shutdown.
 
-Artifacts go to `runs/web/{id}/` by default: bounded observation files, `events.json`
+Artifacts go to `runs/web/{id}/` by default: `config.json`, bounded observation files, `events.json`
 and, for completed runs, `results.json`. Set `WEIGHTFORGE_RUNS_DIR` to change the
 root. Completed JSON artifacts survive restarts, but the dashboard download routes
 require a retained process-local session. Open older files directly from disk.
