@@ -1,0 +1,33 @@
+[project]
+name = "weightforge"
+version = "0.1.0"
+description = "Laptop-first transactional sparse weight editing research harness"
+requires-python = ">=3.12,<3.13"
+dependencies = ["torch>=2.5,<3", "fastapi>=0.115,<1", "uvicorn>=0.30,<1"]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "httpx>=0.27,<1", "ruff>=0.9,<1"]
+
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+weightforge = "weightforge.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "SIM"]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
