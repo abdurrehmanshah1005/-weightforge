@@ -10,6 +10,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.13.8"
@@ -17,4 +20,21 @@ jobs:
       - run: uv sync --locked
       - run: uv run --locked ruff check .
       - run: uv run --locked python -m pytest -q
+      - run: node --test tests/frontend.test.mjs tests/frontend-dom.test.mjs
       - run: uv run --locked python -m weightforge.cli --out runs/ci --budget 4 --random-runs 2
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config --quiet
+      - run: docker compose up --build -d --wait --wait-timeout 180
+      - name: Verify packaged dashboard and real inference
+        shell: bash
+        run: |
+          curl --fail http://127.0.0.1:8000/ | grep 'Make every edit'
+          curl --fail http://127.0.0.1:8000/static/app.js > /dev/null
+          python3 scripts/container_smoke.py
+      - if: always()
+        run: docker compose logs
+      - if: always()
+        run: docker compose down
