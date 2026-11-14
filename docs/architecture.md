@@ -7,10 +7,10 @@ Providers only propose JSON. Evaluation decides whether validation loss strictly
 decreases without reducing validation accuracy. The demo runner evaluates holdout
 after search; its results never enter acceptance. The API uses the same engine.
 
-The MVP has no database, external task queue, multiuser server, training system or
-automated research agent. Model loading is caller-owned; the demo constructs a
-known fixture. This avoids unsafe arbitrary checkpoint uploads and unnecessary
-framework infrastructure.
+Task loading lives in tasks.py: XOR is constructed locally; MNIST loads a strictly
+validated supported checkpoint and explicit evaluation splits. The preparation CLI
+trains the MNIST baseline; editing uses no optimizer or backward pass. The service
+has no database, external queue, multiuser accounts or automated research agent.
 
 ## Memory and complexity
 
@@ -18,7 +18,8 @@ Let P be scalar parameters, T parameter tensors, k coordinates in a proposal and
 K retained changed coordinates. Model weights remain O(P). Adapter metadata is
 O(T). Staging and rollback use O(k) scalar tensors; retained origins use O(K).
 Inspection samples at most eight tensors and eight prefix values each by default,
-with an 8192-byte total observation ceiling. It does not compute full-tensor means,
+with an 8192-byte inspection ceiling. The complete hosted-provider observation,
+including diagnostics, metrics and recent decisions, is capped at 16384 bytes. It does not compute full-tensor means,
 norms or serialize weights. Prefix sampling is deliberately simple and biased;
 future targeted inspection should choose task-relevant components explicitly.
 
@@ -60,9 +61,11 @@ needs batching/tokenization, locality, efficacy, perplexity and held-out task te
 
 ## Live sessions and frontend
 
-The dashboard is plain HTML/CSS/JavaScript packaged with the Python application.
-FastAPI serves assets, accepts bounded run configuration and streams sequentially
-numbered SSE events. No hosted service or frontend build process is involved.
+The frontend is a separate plain HTML/CSS/JavaScript service in frontend/. Nginx
+serves pages and proxies /api requests to FastAPI with SSE buffering disabled. The
+local Node development server provides the same route contract. FastAPI accepts
+bounded run configuration and streams sequentially numbered SSE events. There is
+no frontend dependency installation or build pipeline.
 
 Each session has its own model, sparse origins, validation seed and artifact
 directory. A single worker serializes experiments; at most two can be active or
@@ -80,3 +83,22 @@ Experiment 02 inspired the additive flat-index schema, loss-plus-accuracy rule,
 manual provider boundary, seeded random comparison and final-only holdout. Its
 full model deepcopy, full-weight context and full initial-state comparisons were
 replaced. Its old folder and checkpoints are not dependencies and remain unchanged.
+
+## Proposal guidance and evidence
+
+Calibration computes mean(target - probability) on validation batches and proposes
+one bounded additive output-bias edit at the largest residual. This is a narrow,
+task-aware direction estimate, not backpropagation or general weight repair. The
+same local acceptance rule decides whether to keep it. The scripted XOR provider
+is named demo and is unavailable for imported models.
+
+OpenAI receives bounded inspection, validation metrics/residuals and three recent
+decision summaries through structured JSON output. A 30-second timeout, response
+size cap, explicit model configuration and consent gate bound its use. It cannot
+execute code or access model files. API credentials are never included in prompts
+or result artifacts. Successful response provenance is recorded; transport failures
+fail the run rather than switching algorithms.
+
+Completed results are published by atomic file replacement before the completed
+event. A retained full checkpoint is written once at final export, not copied per
+edit. Saved-report routes work after restart; in-flight jobs are not resumed.

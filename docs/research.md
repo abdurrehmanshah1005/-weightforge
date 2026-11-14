@@ -38,3 +38,20 @@ research claims are not treated as established results in this repository.
 Future studies should measure edit efficacy, unrelated-task preservation, multiple
 seeds/checkpoints, wall-clock/API cost and process peak memory. Compare no-edit,
 random-search and gradient-based task baselines before attributing gains to an LLM.
+
+## Guided and hosted-provider extension
+
+The web default is now output-bias calibration. The CLI default remains random.
+Calibration can reach any class output bias; random search samples only exposed
+prefix coordinates. Compare them as different strategies, not a tightly matched
+coordinate-search experiment. The hosted provider also receives validation
+diagnostics. Its prompt and response metadata are artifacts, but hosted responses
+are not guaranteed reproducible. Mock HTTP tests establish protocol behavior only.
+
+MNIST training uses the first 12,000 training images; editing validation uses the
+next 1,000; final evaluation uses the first 2,000 test images. An imported checkpoint
+may already have seen those examples: users must supply training provenance.
+Repeated model selection on displayed holdout scores invalidates independence.
+Controlled synthetic-data integration tests are plumbing checks, not benchmarks.
+Measure real trained checkpoints over predeclared seeds before making improvement
+claims. Arbitrary transformers and 7B parameter models remain unvalidated.

@@ -1,172 +1,155 @@
 # WeightForge
 
-Laptop-first research software for proposing, testing, and retaining sparse edits
-to PyTorch model weights. The workflow is **inspect → propose → validate → apply
-temporarily → evaluate → accept or rollback → record**.
+A laptop-first workspace for testing sparse changes to PyTorch model weights.
+Import a supported checkpoint, choose a proposer, watch measured decisions, and
+export the retained model with its evaluation report.
 
-This is a runnable MVP, not evidence that arbitrary LLM-generated edits improve
-language models. The default proposer is seeded random search. No paid service,
-API key, downloaded model, GPU, optimizer, or training is needed.
+**Status:** single-user local research application. Guided calibration and optional
+OpenAI proposals are implemented; arbitrary model uploads, transformer editing and
+public multiuser production deployment are not supported. Improvements are measured,
+never guaranteed. See [verification](docs/verification.md) for checks actually run.
 
-## Interactive experiment lab
+![WeightForge overview](docs/screenshots/overview.jpg)
+
+Actual product screenshots, captured with the backend unavailable in the development
+session. Empty metrics and the connection warning are intentional; these images do
+not claim a completed model improvement.
+
+## How it works
+
+1. **Prepare and import.** Train the supported MNIST classifier or bring a compatible
+   float32 state_dict. Import validates names, shapes, finite values and size.
+2. **Choose a proposer.** A proposal is JSON describing one parameter, flat index,
+   additive delta and reason. It is a candidate change, not an approved improvement.
+3. **Inspect and propose.** Bounded parameter samples and validation-only diagnostics
+   guide the proposer. Raw datasets and holdout results are not sent to the LLM.
+4. **Test transactionally.** Save only touched scalar values, apply temporarily,
+   evaluate, and keep the edit only if validation loss falls without accuracy falling.
+   Otherwise restore the previous values. No full-model deepcopy is used for undo.
+5. **Compare and export.** Run seeded random comparisons from the same initial model,
+   then evaluate final holdout. Saved runs expose the report, sparse patch, full JSON
+   and retained checkpoint, including after a server restart.
+
+| Proposal source | What it does | Cost / limitation |
+| --- | --- | --- |
+| Guided calibration | Chooses the largest mean target-minus-probability residual and adjusts that output bias | Local; narrow calibration heuristic, no backpropagation |
+| Seeded random | Samples a visible prefix coordinate and bounded delta | Local; comparison baseline |
+| OpenAI | Receives bounded observations and returns a structured JSON edit | API charges, backend configuration and per-run consent required |
+| XOR walkthrough | Alternates a known helpful bias edit with its reversal | Scripted demonstration only; XOR only |
+
+The default UI choice is guided calibration. Calibration and random search have
+different coordinate access and prior information; matched proposal budgets do not
+make this a controlled proof of superiority. A retained validation improvement can
+still worsen holdout. Both are displayed separately.
+
+## Start on Windows (Python 3.12, Node 24)
+
+From this repository in PowerShell:
 
 ```powershell
+uv python install 3.12
 uv sync --locked
-uv run --locked python -m uvicorn weightforge.api:create_app --factory --host 127.0.0.1 --port 8000 --workers 1
+uv run --locked python -m uvicorn weightforge.api:create_app --factory --host 127.0.0.1 --port 8001 --workers 1
 ```
 
-Open [WeightForge Lab](http://127.0.0.1:8000/). Choose **Guided demonstration**,
-two proposals and seed 42, then start. Watch the first edit improve validation;
-its reversal is rejected and the improved model is preserved. Inspect the history,
-switch loss/accuracy, review individual edits and download final results.
+In a second terminal in the same folder:
 
-The guided proposer is a declared fixture-specific heuristic, not an LLM. The
-dashboard uses actual server events and measured metrics, with separate candidate
-and retained curves, cooperative stop, seeded random baselines and final-only
-holdout. XOR may finish quickly; the history preserves every decision.
+```powershell
+node frontend/dev-server.mjs
+```
 
-Prefer Docker? Start Docker Desktop and run:
+Open [WeightForge](http://127.0.0.1:8000/). No virtual-environment activation is
+needed. For a quick pipeline demonstration, choose **XOR walkthrough**, two proposals,
+and one baseline trial. For useful model experiments, follow the MNIST flow below.
+The backend runs on 8001 during local development; the frontend on 8000 proxies
+`/api/*`. [API documentation](http://127.0.0.1:8000/api/docs) uses that same origin.
+
+## Use a real small model
+
+```powershell
+uv run --locked python -m weightforge.mnist --download --epochs 3
+```
+
+Open **Model library**, name your model and import `runs/mnist.pt`. Select **Create
+experiment**, choose **Guided calibration**, start with 12 proposals and 3 random
+trials, then inspect **Saved runs** for holdout results and checkpoint export.
+Use a different `--out` path when training again; existing checkpoints are preserved.
+
+Supported architecture: Flatten → Linear(784,64) → ReLU → Linear(64,10), **50,890
+parameters**. Training uses 12,000 MNIST examples, editing uses a separate 1,000,
+and final evaluation uses 2,000 official test examples. Uploading arbitrary `.pt`
+files is not supported. A new architecture requires its loader, preprocessing,
+validation/holdout contract and evaluator. See [MNIST details](docs/mnist.md).
+
+![Model library](docs/screenshots/models.jpg)
+
+## Optional hosted LLM proposer
+
+Copy `.env.example` to `.env` and set `OPENAI_API_KEY` and `WEIGHTFORGE_LLM_MODEL`.
+Choose a model available to your account that supports Chat Completions structured
+JSON outputs. No model identifier or credentials are bundled.
+
+For local development, restart the backend with:
+
+```powershell
+uv run --locked --env-file .env python -m uvicorn weightforge.api:create_app --factory --host 127.0.0.1 --port 8001 --workers 1
+```
+
+Docker Compose reads `.env` automatically. Select **OpenAI proposals** and check the
+consent box before starting. The key stays server-side. Each run makes at most one
+request per proposal; context is capped at 16 KiB, responses at 64 KiB, output at
+1,000 tokens, and timeout at 30 seconds. No retries, tools or silent random fallback.
+The engine still validates every returned edit. Provider/model/request ID and token
+usage are recorded when returned. Live paid-provider execution has not been verified.
+
+The offline CLI bridge also remains available:
+
+```powershell
+uv run --locked python -m weightforge.cli --out runs/manual --budget 1 --random-runs 3 --proposal examples/proposal.json
+```
+
+The example is a declared heuristic, not an LLM discovery. See the provider
+[structured-output protocol](https://developers.openai.com/api/docs/guides/structured-outputs).
+
+![Proposal providers](docs/screenshots/providers.jpg)
+
+## Docker: separate frontend and backend
 
 ```powershell
 docker compose up --build -d --wait
 ```
 
-The same dashboard is available at port 8000. Results persist in a named volume.
-See [dashboard usage and semantics](docs/dashboard.md) and
-[Docker instructions](docs/docker.md).
+Only `127.0.0.1:8000` is published. The unprivileged Nginx frontend serves static
+pages and proxies API/SSE to the Python backend. Models and results persist in a
+named volume. Prepare MNIST data first; `runs/data` is mounted read-only. Do not run
+the local frontend and Compose on port 8000 simultaneously. See [Docker operations](docs/docker.md).
 
-## Windows / Python 3.12 quick start
-
-Install [uv](https://docs.astral.sh/uv/getting-started/installation/) if needed,
-then open PowerShell in this repository:
+## Tests and architecture
 
 ```powershell
-uv python install 3.12
-uv sync --locked
-uv run --locked python -m pytest -q
 uv run --locked ruff check .
-uv run --locked python -m weightforge.cli --out runs/first --budget 12 --random-runs 5
-```
-
-The project explicitly supports Python 3.12 and uses the CPU PyTorch index to
-avoid an unnecessary CUDA installation on a laptop. The first sync needs internet
-and downloads PyTorch. A fresh run folder is required; previous results are never
-overwritten. Activation is unnecessary. All generated artifacts go under `runs/`.
-Linux uses the same commands. See [uv's PyTorch guide](https://docs.astral.sh/uv/guides/integration/pytorch/).
-
-Inspect `runs/first/results.json`: before/after validation loss and accuracy,
-final holdout, complete proposal history, cumulative patch, seeded random trials,
-fixture hash, limits, Python version and PyTorch version. Observation files contain
-bounded sampled model information, never the holdout. The demo is analytical XOR
-with nine scalar parameters and a deliberately weak output threshold. It is a
-pipeline fixture, not an independently damaged real-world model.
-
-## Optional LLM proposals, without an API dependency
-
-1. Run the demo once and give only `observation_000.json` to your chosen LLM.
-2. Ask it for one JSON object with exactly `reason` and `edits`, matching the example.
-3. Save its response to `proposal.json`, then run:
-
-```powershell
-uv run --locked python -m weightforge.cli --out runs/manual --budget 1 --random-runs 5 --proposal proposal.json
-```
-
-Repeat `--proposal` once per step for an offline sequence. For an interactive
-experiment, use `GET /inspect`, ask the LLM for a proposal, and submit it to
-`POST /proposals`; record provider name/version and prompts yourself. The manual
-bridge has no automatic provenance verification. Files are limited to 16 KiB.
-Invalid proposals consume a search slot; missing files, exhausted providers and
-other transport failures stop the run. There is no silent random fallback.
-
-`examples/proposal.json` is an explicit bias heuristic for a deterministic smoke
-check. It is not an LLM discovery or a scientific result:
-
-```powershell
-uv run --locked python -m weightforge.cli --out runs/smoke --budget 1 --random-runs 5 --proposal examples/proposal.json
-```
-
-Implement `Provider.propose(observation)` to add a hosted or local LLM later.
-Providers return data only. Local validation remains authoritative. Do not give
-providers filesystem tools, hidden targets, checkpoints, or holdout results.
-
-## Basic local API
-
-```powershell
-uv run --locked python -m uvicorn weightforge.api:create_app --factory --host 127.0.0.1 --port 8000
-```
-
-Open [interactive API docs](http://127.0.0.1:8000/docs).
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| GET | `/health` | Local service status |
-| GET | `/inspect` | Bounded proposer observation |
-| GET | `/evaluate` | Current validation metrics |
-| GET | `/patch` | Cumulative accepted edits |
-| POST | `/proposals` | Validate, test, and conditionally retain an edit |
-
-```powershell
-$body = Get-Content examples/proposal.json -Raw
-Invoke-RestMethod http://127.0.0.1:8000/proposals -Method Post -ContentType 'application/json' -Body $body
-```
-
-These original endpoints use an independent in-memory manual sandbox. Dashboard
-runs use fresh isolated models and persist artifacts under `runs/web/` (or
-`WEIGHTFORGE_RUNS_DIR`). One worker executes experiments and a bounded registry
-retains their replayable live events. Use one process/worker. Session identities
-reset on restart; saved JSON remains on disk. The service has no authentication
-and is intended for loopback development.
-
-## Adapt another model
-
-```python
-from weightforge.core import TorchAdapter, Limits
-from weightforge.evaluation import attempt
-
-adapter = TorchAdapter(your_torch_model, Limits(max_edits=2, max_changed=8, max_delta=0.1))
-context = adapter.inspect()
-result = attempt(adapter, proposal, (validation_inputs, binary_targets))
-```
-
-The supplied evaluator handles binary logits and batched tensors on their existing
-device. For a multiclass classifier or language model, supply a task-specific
-evaluator and acceptance protocol around `adapter.transaction(proposal)`.
-`tx.commit()` retains an edit; exiting without commit or raising an exception
-restores edited values exactly. No `deepcopy(model)` or initial full checkpoint is
-used in the edit path. Users must give the adapter exclusive ownership of weights.
-
-Only ordinary eager, resident, contiguous floating-point parameters are supported.
-Tied/shared storage, quantized, sharded, offloaded, distributed and compiled-model
-editing are deliberately unsupported. Custom forward methods must not mutate
-parameters or buffers: rollback covers proposed parameter coordinates only.
-
-## Tests and project structure
-
-`src/weightforge/` contains the adapter, transaction engine, binary evaluator,
-proposer protocol, CLI/demo and API. `tests/` checks atomic validation, rollback,
-exception recovery, cumulative limits, bounded inspection, sparse undo storage,
-overflow, unsupported layouts, seeded run repeatability and API integration.
-GitHub Actions runs lint, tests and a CLI smoke run on Windows and Linux.
-Frontend state/rendering checks use Node 24:
-
-```powershell
+uv run --locked python -m pytest -q
 node --test tests/frontend.test.mjs tests/frontend-dom.test.mjs
 ```
 
-A separate Linux CI job builds Docker and checks the packaged dashboard, real
-inference, rollback and exported results. See the verification document for what
-was actually executed locally versus what remains for CI.
+CI runs Python checks on Windows and Linux, frontend tests, a CLI smoke run and a
+two-container integration test covering real inference, rollback and result export.
+Current local restrictions prevented executing the new full Python/container suite;
+do not interpret the previous green CI run as verification of these changes.
+
+```text
+frontend/public/       Separate multi-page HTML/CSS/JavaScript product
+frontend/nginx.conf   Same-origin API proxy and unbuffered SSE
+frontend/Dockerfile   Frontend service
+src/weightforge/      Adapter, tasks, providers, evaluator, sessions, API, CLI
+tests/                Transaction, provider, task, API and frontend checks
+docs/                 Architecture, protocol, deployment and screenshots
+```
 
 See [architecture](docs/architecture.md), [research limitations](docs/research.md),
-[verification](docs/verification.md), and [publishing steps](docs/publishing.md).
-
-## Next empirical steps
-
-1. Use fresh damage cases and several predeclared seeds on small trained models.
-2. Compare manual LLM proposals against the complete random distribution under the
-   same proposal count, coordinate access and numerical limits.
-3. Add a small multiclass task, then benchmark 100K–1M parameter models for elapsed
-   time, process peak RAM and inspection size before increasing scale.
-4. Add transformer-specific adapters and evaluations only after those measurements.
-
-No 7B support or general intelligence improvement is claimed by this MVP.
+[dashboard semantics](docs/dashboard.md), and [publishing](docs/publishing.md).
+The service has no authentication or durable job recovery. Public production use
+requires authentication/authorization, TLS, isolated resource-limited uploads and
+workers, quotas, recovery, backups and operational validation. The present adapter
+does not support tied, quantized, sharded or offloaded transformer weights; no 7B
+model support or general capability improvement is claimed.

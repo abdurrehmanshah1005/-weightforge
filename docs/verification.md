@@ -1,5 +1,43 @@
 # Verification
 
+## Guided proposals and separate frontend — 14 November 2026
+
+Executed for this extension:
+
+- 9 frontend state/DOM tests passed with the separate frontend paths and `/api` proxy.
+- 6 provider tests passed: residual direction/clipping, explicit consent, structured
+  request/provenance, context cap, response cap/refusal, and transport failure without
+  fallback. HTTP was mocked; no paid OpenAI calls were made.
+- 5 dependency-free session lifecycle tests passed.
+- Python source compilation, JavaScript syntax checks and Compose configuration passed.
+- Actual browser checks at desktop and mobile widths confirmed page rendering,
+  mobile navigation, disabled inference while disconnected, and the OpenAI selection
+  link. Screenshots in `docs/screenshots` show the real backend-unavailable state.
+
+Not executed here: the full pytest/PyTorch suite, Ruff, image build, container smoke
+test, real trained-MNIST calibration benchmark, or live hosted-provider run. The
+project Python launcher could not launch its underlying interpreter; Ruff execution
+and Docker engine access were denied by this session's permissions. These are
+outstanding checks, not passes. Added integration tests cover real XOR calibration,
+MNIST architecture with explicitly synthetic data, checkpoint export, and persistent
+report access after restart. CI must run them before this revision is trusted.
+
+The preceding remote CI run `43603068143` on `5372fb0` was successful when inspected.
+That result applies to the preceding revision, not this extension.
+
+Commands for the remaining local checks:
+
+```powershell
+uv sync --locked
+uv run --locked ruff check .
+uv run --locked python -m pytest -q
+docker compose up --build -d --wait
+uv run --locked python scripts/container_smoke.py
+```
+
+Stop the Node development frontend first if it occupies port 8000. Live LLM testing
+requires your configured account and explicit consent; it is never part of CI.
+
 ## Dashboard and container milestone — 14 November 2026
 
 Actually executed in this session:

@@ -11,10 +11,10 @@ From the repository in your normal PowerShell terminal:
 ```powershell
 uv run --locked python -m weightforge.mnist --download --epochs 3
 uv run --locked python -m pytest -q
-uv run --locked python -m uvicorn weightforge.api:create_app --factory --host 127.0.0.1 --port 8000
+uv run --locked python -m uvicorn weightforge.api:create_app --factory --host 127.0.0.1 --port 8001
 ```
 
-Open `/library`, upload `runs/mnist.pt`, and select its experiment link. The model
+Start `node frontend/dev-server.mjs` in a second terminal. Open `/models`, upload `runs/mnist.pt`, and select its experiment link. The model
 has 50,890 parameters: Flatten, Linear(784,64), ReLU, Linear(64,10). Inputs are
 28x28 grayscale pixels divided by 255. Checkpoints must be float32 state_dicts
 matching that architecture exactly; model code and arbitrary pickled modules are
@@ -29,9 +29,9 @@ training. The application cannot infer the provenance of uploaded weights.
 
 The default command trains on CPU with two threads. It does not intentionally
 damage the model. Search attempts to improve the imported incumbent and can
-accept no proposals. Current proposals sample bounded visible prefix coordinates;
-this simple random method is a baseline, not evidence of a useful general repair
-algorithm or LLM superiority. Results report validation and final test separately.
+accept no proposals. Guided calibration uses validation output residuals; random search samples visible
+prefix coordinates. Optional OpenAI proposals use bounded observations. None of
+these methods establishes general repair or LLM superiority. Results report validation and final test separately.
 
 Imported models live under `runs/models`; dataset files under `runs/data`.
 Environment overrides: WEIGHTFORGE_MODELS_DIR, WEIGHTFORGE_DATA_DIR. Docker mounts

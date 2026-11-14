@@ -1,57 +1,39 @@
-# Docker on Windows
-
-Start Docker Desktop in Linux containers mode, then open PowerShell in the
-WeightForge repository:
+# Two-service local deployment
 
 ```powershell
-docker compose config --quiet
 docker compose up --build -d --wait
-```
-
-Open http://127.0.0.1:8000/ for the dashboard and
-http://127.0.0.1:8000/docs for API exploration. The first build downloads the
-Python base image, uv, and CPU PyTorch dependencies. Allow several minutes and
-enough disk space for the image and build cache. No GPU is required.
-
-```powershell
-docker compose logs -f
-docker compose stop
-docker compose start
+docker compose logs --tail 100
 docker compose down
 ```
 
-`down` removes the container and network but retains the named results volume.
-Do not add `-v` if you want to keep experiment artifacts. Live sessions reset on
-restart; their completed files remain in `/data/runs`.
+Open http://127.0.0.1:8000/ and http://127.0.0.1:8000/api/docs.
+Frontend: unprivileged Nginx on internal port 8080. Backend: one FastAPI worker on
+internal port 8000, no published host port. SSE proxy buffering is disabled.
+Both containers drop capabilities and disallow gaining privileges. Health checks
+gate frontend startup; restart policies support ordinary process restarts.
 
-Copy artifacts out of the running container:
+The `weightforge-runs` volume stores results under `/data/runs` and imported models
+under `/data/runs/models`. Existing result folders from the previous deployment
+remain discoverable. `docker compose down` retains data; do not add `--volumes`
+unless you intend to erase it. Back up this volume before upgrades.
 
-```powershell
-docker compose cp weightforge:/data/runs ./exported-runs
-```
+For MNIST, first run the README preparation command on the host. `./runs/data` is
+mounted read-only at `/data/datasets`. No dataset downloads happen during inference.
+The checkpoint is imported through the model library. Local-development runs and
+Docker-volume runs are separate stores.
 
-The image runs as a non-root user, uses locked CPU dependencies, exposes one
-single-worker service and includes a health check. Compose binds the port to
-loopback only. Source code, local virtual environments, checkpoints, credentials
-and existing runs are excluded from the build context. Frontend assets are
-installed inside the Python package; no Node server runs in the container.
-
-The health check confirms the HTTP process is ready. It does not prove PyTorch
-inference works. Test actual inference after startup with:
-
-```powershell
-uv run --locked python scripts/container_smoke.py
-```
-
-That script creates a real two-proposal guided run, checks accept then rollback,
-and downloads final results. CI builds the container and runs this check on Linux.
-
-Rebuild after changes:
+Compose reads optional credentials from `.env`. After changing them:
 
 ```powershell
-docker compose up --build -d --wait
+docker compose up -d --force-recreate backend
 ```
 
-For a busy port, stop the earlier local uvicorn process or change the host side
-of the Compose port mapping. If Docker reports that its engine/pipe is missing,
-start Docker Desktop and wait for it to become ready before retrying.
+Do not publish the backend or change the host binding to all interfaces for public
+deployment. This profile is for one trusted local user; it does not supply accounts,
+TLS, hostile-upload process isolation, resource quotas or durable task recovery.
+`weights_only=True` restricts checkpoint loading but is not a resource sandbox.
+
+CI builds both services, loads the actual frontend, then runs
+`python scripts/container_smoke.py` against the `/api` proxy. This checks a real
+scripted XOR accept/rollback sequence and exported results. Optional paid LLM calls
+are never made in CI. See `verification.md` for local execution limitations.
