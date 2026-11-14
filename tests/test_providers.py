@@ -53,9 +53,11 @@ class ProviderTests(unittest.TestCase):
                 self.provider().propose({})
 
     def test_transport_failure_has_no_fallback(self):
-        with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("secret")) as call:
-            with self.assertRaisesRegex(RuntimeError, "LLM request failed") as error:
-                self.provider().propose({})
+        with (
+            patch("urllib.request.urlopen", side_effect=urllib.error.URLError("secret")) as call,
+            self.assertRaisesRegex(RuntimeError, "LLM request failed") as error,
+        ):
+            self.provider().propose({})
         self.assertNotIn("secret", str(error.exception))
         self.assertEqual(call.call_count, 1)
 

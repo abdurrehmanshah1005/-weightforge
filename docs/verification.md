@@ -1,5 +1,17 @@
 # Verification
 
+## CI failure correction
+
+Run 43608690218 on afa4e41 passed the two-container build, backend health,
+real inference, rollback and checkpoint/result export. Both OS test jobs stopped
+at Ruff SIM117 in test_providers.py; pytest was skipped, not failed. Combined the
+two context managers without disabling the rule. Six provider tests and nine
+frontend tests passed locally after the correction. Full pytest and Ruff remain
+unavailable in this session. The local smoke preflight returned HTTP 503 because
+the frontend could not reach port 8001; its message now identifies that condition.
+Disconnected screenshots were removed from the README pending connected captures.
+
+
 ## Guided proposals and separate frontend — 14 November 2026
 
 Executed for this extension:

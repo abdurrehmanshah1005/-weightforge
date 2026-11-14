@@ -9,11 +9,9 @@ OpenAI proposals are implemented; arbitrary model uploads, transformer editing a
 public multiuser production deployment are not supported. Improvements are measured,
 never guaranteed. See [verification](docs/verification.md) for checks actually run.
 
-![WeightForge overview](docs/screenshots/overview.jpg)
 
-Actual product screenshots, captured with the backend unavailable in the development
-session. Empty metrics and the connection warning are intentional; these images do
-not claim a completed model improvement.
+Product screenshots will be published after a connected backend and completed run
+are verified. The earlier disconnected captures are not product evidence.
 
 ## How it works
 
@@ -64,6 +62,23 @@ and one baseline trial. For useful model experiments, follow the MNIST flow belo
 The backend runs on 8001 during local development; the frontend on 8000 proxies
 `/api/*`. [API documentation](http://127.0.0.1:8000/api/docs) uses that same origin.
 
+## If the backend is unavailable
+
+The local frontend on port 8000 requires FastAPI on port 8001. Keep both terminals
+running. An older FastAPI process on port 8000 belongs to the previous setup; stop
+it before starting the new frontend or Docker Compose.
+
+Check the backend directly:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8001/health
+Invoke-RestMethod http://127.0.0.1:8000/api/capabilities
+```
+
+For Docker, use `docker compose ps` and
+`docker compose logs --tail 80 backend frontend`. The smoke script now reports
+HTTP status and response details before attempting an experiment.
+
 ## Use a real small model
 
 ```powershell
@@ -81,7 +96,6 @@ and final evaluation uses 2,000 official test examples. Uploading arbitrary `.pt
 files is not supported. A new architecture requires its loader, preprocessing,
 validation/holdout contract and evaluator. See [MNIST details](docs/mnist.md).
 
-![Model library](docs/screenshots/models.jpg)
 
 ## Optional hosted LLM proposer
 
@@ -111,7 +125,6 @@ uv run --locked python -m weightforge.cli --out runs/manual --budget 1 --random-
 The example is a declared heuristic, not an LLM discovery. See the provider
 [structured-output protocol](https://developers.openai.com/api/docs/guides/structured-outputs).
 
-![Proposal providers](docs/screenshots/providers.jpg)
 
 ## Docker: separate frontend and backend
 
