@@ -10,7 +10,7 @@ from .demo import dataset, model
 
 
 class Task:
-    def __init__(self, model_id, seed):
+    def __init__(self, model_id, seed, checkpoint=None, holdout_start=0):
         self.model_id = model_id
         if model_id == "xor":
             self.name = "XOR demonstration"
@@ -19,12 +19,17 @@ class Task:
             self.holdout = dataset(seed + 1, 512)
         else:
             self.name = "MNIST digit classifier"
-            self.checkpoint = Path(os.environ.get("WEIGHTFORGE_MODELS_DIR", "runs/models")) / f"{model_id}.pt"
+            self.checkpoint = Path(checkpoint) if checkpoint is not None else Path(
+                os.environ.get("WEIGHTFORGE_MODELS_DIR", "runs/models")) / f"{model_id}.pt"
             self.factory = self.load_mnist
             train_x, train_y = mnist.dataset()
             test_x, test_y = mnist.dataset(False)
             self.validation = (train_x[12000:13000].float() / 255, train_y[12000:13000])
-            self.holdout = (test_x[:2000].float() / 255, test_y[:2000])
+            if (type(holdout_start) is not int or holdout_start < 0
+                    or len(test_x) < holdout_start + 2000 or len(train_x) < 13000):
+                raise ValueError("Dataset does not contain the requested evaluation splits")
+            self.holdout = (test_x[holdout_start:holdout_start + 2000].float() / 255,
+                            test_y[holdout_start:holdout_start + 2000])
 
     def load_mnist(self):
         return mnist.load_checkpoint(self.checkpoint)

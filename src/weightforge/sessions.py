@@ -153,7 +153,7 @@ class SessionManager:
         self.pool.shutdown(wait=True)
 
 
-def run_experiment(session):
+def run_experiment(session, *, checkpoint=None, holdout_start=0):
     """Real PyTorch work. No sleeps, invented metrics or full model copies."""
     import hashlib
     import platform
@@ -166,7 +166,7 @@ def run_experiment(session):
     from .tasks import Task
 
     config = session.config
-    task = Task(config.model_id, config.seed)
+    task = Task(config.model_id, config.seed, checkpoint, holdout_start)
     model = task.factory
 
     def observation(current):
@@ -283,7 +283,9 @@ def run_experiment(session):
     return {"config": asdict(config), "environment": {"python": platform.python_version(),
             "torch": torch.__version__}, "fixture_sha256": digest.hexdigest(),
             "provider_disclosure": {"demo": "Scripted XOR demonstration", "guided": "Validation output-bias calibration; no backpropagation", "random": "Random visible coordinates", "openai": "Hosted LLM; validation observations sent to OpenAI"}[config.provider],
-            "task": {"name": task.name, "validation_samples": len(validation[0]), "holdout_samples": len(holdout[0])},
+            "task": {"name": task.name, "validation_samples": len(validation[0]),
+                     "holdout_samples": len(holdout[0]),
+                     "holdout_start": holdout_start if config.model_id != "xor" else None},
             "initial": initial, "retained": metrics(adapter), "history": history,
             "patch": adapter.patch(), "holdout": metrics(adapter, holdout),
             "unedited_holdout": metrics(TorchAdapter(model(), limits), holdout),

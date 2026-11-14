@@ -1,5 +1,20 @@
 # Verification
 
+## Independent-training-seed benchmark
+
+Added `mnist --seed` and `weightforge.benchmark`. Three dependency-free benchmark
+tests passed locally: protocol bounds, checkpoint-paired aggregation, and complete
+orchestration with explicitly synthetic callback results. They check manifest
+publication before training, preservation of every result, refusal to overwrite,
+and absence of a completion summary on failure. CLI help and source compilation
+also passed. Eight provider tests and five session lifecycle tests passed.
+
+Native tests for seeded training repeatability, distinct initializations, training
+split exclusion and alternate holdout slicing are included in the pytest suite.
+The project interpreter still cannot launch in this session, and Ruff execution
+is denied. Those native tests and the actual multi-seed MNIST benchmark have not
+been executed here. No training accuracy or benchmark improvement is claimed.
+
 ## CI failure correction
 
 Run 43608690218 on afa4e41 passed the two-container build, backend health,

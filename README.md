@@ -139,6 +139,16 @@ the local frontend and Compose on port 8000 simultaneously. See [Docker operatio
 
 ## Tests and architecture
 
+For a fixed experiment across separately trained checkpoints, see the
+[MNIST benchmark instructions](docs/benchmark.md). One command trains seeds 101,
+102 and 103, runs guided editing and all random comparisons, and writes a paired
+summary plus CSV. It uses test images [2000, 4000) instead of the dashboard subset
+already inspected during development. No backend or API key is required.
+
+```powershell
+uv run --locked python -m weightforge.benchmark --download --training-seeds 101 102 103 --epochs 3 --budget 12 --random-runs 3 --out runs/benchmark-v1
+```
+
 ```powershell
 uv run --locked ruff check .
 uv run --locked python -m pytest -q
