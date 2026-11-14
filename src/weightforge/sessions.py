@@ -16,7 +16,8 @@ from pathlib import Path
 @dataclass(frozen=True)
 class RunConfig:
     model_id: str = "xor"
-    provider: str = "guided"
+    provider: str = "demo"
+    llm_consent: bool = False
     budget: int = 12
     seed: int = 42
     random_runs: int = 3
@@ -28,10 +29,12 @@ class RunConfig:
             if (type(self.model_id) is not str or len(self.model_id) != 32
                     or any(c not in "0123456789abcdef" for c in self.model_id)):
                 raise ValueError("Invalid model ID")
-            if self.provider != "random":
-                raise ValueError("MNIST currently supports random sparse search")
-        if self.provider not in ("guided", "random"):
-            raise ValueError("Provider must be guided or random")
+            if self.provider == "demo":
+                raise ValueError("The scripted demonstration is XOR-only")
+        if self.provider not in ("demo", "guided", "random", "openai"):
+            raise ValueError("Unknown proposal provider")
+        if type(self.llm_consent) is not bool or (self.provider == "openai" and not self.llm_consent):
+            raise ValueError("LLM runs require explicit consent to sending observations and API charges")
         for name, low, high in (("budget", 1, 50), ("seed", 0, 2**31 - 1),
                                 ("random_runs", 1, 10), ("max_changed", 1, 9)):
             value = getattr(self, name)
@@ -124,8 +127,9 @@ class SessionManager:
                 session.status = "running"
             result = self.runner(session)
             # Save the exact result before announcing its terminal state.
-            (session.folder / "results.json").write_text(
+            (session.folder / "results.tmp").write_text(
                 json.dumps(result, indent=2, allow_nan=False), encoding="utf-8")
+            (session.folder / "results.tmp").replace(session.folder / "results.json")
             with session.condition:
                 session.result = result
                 session.status = "completed"
@@ -157,33 +161,22 @@ def run_experiment(session):
     import torch
 
     from .core import Limits, TorchAdapter
-    from .demo import dataset, model, observation
     from .evaluation import evaluate
-    from .providers import RandomProvider
+    from .providers import CalibrationProvider, OpenAIProvider, RandomProvider
+    from .tasks import Task
 
     config = session.config
-    if config.model_id != "xor":
-        import os
+    task = Task(config.model_id, config.seed)
+    model = task.factory
 
-        from . import mnist
-
-        checkpoint = Path(os.environ.get("WEIGHTFORGE_MODELS_DIR", "runs/models")) / (config.model_id + ".pt")
-        def model():
-            return mnist.load_checkpoint(checkpoint)
-        train_x, train_y = mnist.dataset()
-        test_x, test_y = mnist.dataset(False)
-        validation_data = (train_x[12000:13000].float() / 255, train_y[12000:13000])
-        holdout_data = (test_x[:2000].float() / 255, test_y[:2000])
-        def dataset(seed, count):
-            return validation_data if count == 128 else holdout_data
-
-        def observation(current):
-            return {"task": "MNIST classification", "inspection": current.inspect(),
-                    "max_delta": current.limits.max_delta}
-    limits = Limits(max_delta=config.max_delta, max_changed=config.max_changed)
+    def observation(current):
+        return {"task": task.name, "inspection": current.inspect(),
+                "max_delta": current.limits.max_delta,
+                "diagnostics": task.diagnostics(current)}
+    limits = Limits(max_edits=1, max_delta=config.max_delta, max_changed=config.max_changed)
     adapter = TorchAdapter(model(), limits)
-    validation = dataset(config.seed, 128)
-    holdout = dataset(config.seed + 1, 512)
+    validation = task.validation
+    holdout = task.holdout
 
     def check_cancel():
         if session.cancel.is_set():
@@ -198,7 +191,7 @@ def run_experiment(session):
     for name, p in adapter.parameters.items():
         digest.update(name.encode())
         digest.update(json.dumps(p.detach().flatten().tolist()).encode())
-    session.emit("started", initial=initial, model={"name": "Analytical XOR" if config.model_id == "xor" else "MNIST MLP", "parameters": sum(p.numel() for p in adapter.parameters.values()),
+    session.emit("started", initial=initial, model={"name": task.name, "parameters": sum(p.numel() for p in adapter.parameters.values()),
                  "weight_bytes": sum(p.numel() * p.element_size() for p in adapter.parameters.values()),
                  "observation_bytes": observation_size, "context_limit": limits.context_bytes},
                  message="Fresh model loaded; validation measured")
@@ -208,6 +201,8 @@ def run_experiment(session):
         for step in range(count):
             check_cancel()
             obs = observation(current)
+            obs["validation"] = metrics(current)
+            obs["recent_decisions"] = [{"accepted": row["accepted"], "reason": row["reason"]} for row in history[-3:]]
             if publish:
                 (session.folder / f"observation_{step:03}.json").write_text(
                     json.dumps(obs, indent=2), encoding="utf-8")
@@ -222,6 +217,8 @@ def run_experiment(session):
             entry = {"step": step + 1, "proposal": proposal, "accepted": False}
             if publish:
                 session.emit("propose", step=step + 1, proposal=proposal, message="Candidate proposed")
+            if hasattr(provider, "metadata"):
+                entry["provider_metadata"] = dict(provider.metadata)
             before = metrics(current)
             try:
                 # Adapter lock spans validation, staging, evaluation and commit/rollback.
@@ -259,7 +256,8 @@ def run_experiment(session):
                              message=entry["reason"])
         return history
 
-    provider = RandomProvider(config.seed) if config.provider == "random" else None
+    provider = {"demo": lambda: None, "random": lambda: RandomProvider(config.seed),
+                "guided": CalibrationProvider, "openai": OpenAIProvider}[config.provider]()
     history = trial(adapter, provider, config.budget, True)
     baselines = []
     for index in range(config.random_runs):
@@ -281,10 +279,11 @@ def run_experiment(session):
                 with other.transaction({"reason": "Replay retained patch", "edits": [edit]}) as tx:
                     tx.commit()
         baseline["holdout"] = metrics(other, holdout)
+    torch.save(adapter.model.state_dict(), session.folder / "model.pt")
     return {"config": asdict(config), "environment": {"python": platform.python_version(),
             "torch": torch.__version__}, "fixture_sha256": digest.hexdigest(),
-            "provider_disclosure": "Fixture-specific heuristic, not an LLM" if provider is None
-            else "Seeded random search over visible coordinates",
+            "provider_disclosure": {"demo": "Scripted XOR demonstration", "guided": "Validation output-bias calibration; no backpropagation", "random": "Random visible coordinates", "openai": "Hosted LLM; validation observations sent to OpenAI"}[config.provider],
+            "task": {"name": task.name, "validation_samples": len(validation[0]), "holdout_samples": len(holdout[0])},
             "initial": initial, "retained": metrics(adapter), "history": history,
             "patch": adapter.patch(), "holdout": metrics(adapter, holdout),
             "unedited_holdout": metrics(TorchAdapter(model(), limits), holdout),

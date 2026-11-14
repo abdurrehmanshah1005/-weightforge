@@ -8,10 +8,10 @@ import uuid
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
+from urllib.parse import unquote
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
 
 from .sessions import RunConfig, SessionManager
 
@@ -24,14 +24,54 @@ def create_app(manager=None):
         yield
         await asyncio.to_thread(sessions.close)
 
-    app = FastAPI(title="WeightForge Lab", lifespan=lifespan)
+    app = FastAPI(title="WeightForge Lab", lifespan=lifespan, root_path="/api")
     app.state.sessions = sessions
     model_root = Path(os.environ.get("WEIGHTFORGE_MODELS_DIR", "runs/models"))
 
+    @app.get("/capabilities")
+    def capabilities():
+        from .mnist import data_root
+
+        ready = all((data_root() / name).exists() for name in (
+            "train-images-idx3-ubyte.gz", "train-labels-idx1-ubyte.gz",
+            "t10k-images-idx3-ubyte.gz", "t10k-labels-idx1-ubyte.gz"))
+        return {"providers": ["demo", "guided", "random", "openai"],
+                "llm_configured": bool(os.environ.get("OPENAI_API_KEY") and os.environ.get("WEIGHTFORGE_LLM_MODEL")),
+                "llm_model": os.environ.get("WEIGHTFORGE_LLM_MODEL", ""),
+                "mnist_data_ready": ready, "supported_architectures": ["mnist-mlp-64"],
+                "max_upload_bytes": 2000000, "deployment": "local-single-user"}
+
+    def artifact(identity, name):
+        if len(identity) != 32 or any(c not in "0123456789abcdef" for c in identity):
+            raise HTTPException(404, "Unknown experiment")
+        path = sessions.root / identity / name
+        if not path.is_file():
+            raise HTTPException(404, "Artifact not available")
+        return path
+
+    @app.get("/experiments/{identity}")
+    def saved_result(identity: str):
+        return json.loads(artifact(identity, "results.json").read_text(encoding="utf-8"))
+
+    @app.get("/experiments/{identity}/checkpoint")
+    def checkpoint(identity: str):
+        artifact(identity, "results.json")
+        return FileResponse(artifact(identity, "model.pt"), filename=f"weightforge-{identity}.pt")
+
+    @app.get("/experiments/{identity}/download")
+    def saved_download(identity: str):
+        return FileResponse(artifact(identity, "results.json"), filename=f"weightforge-{identity}.json")
+
     @app.get("/models")
     def models():
-        return [{"id": p.stem, "name": "MNIST MLP", "bytes": p.stat().st_size}
-                for p in model_root.glob("*.pt")]
+        rows = []
+        for path in sorted(model_root.glob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True):
+            try:
+                name = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))["name"]
+            except (OSError, ValueError, KeyError):
+                name = "MNIST MLP"
+            rows.append({"id": path.stem, "name": name, "bytes": path.stat().st_size})
+        return rows
 
     @app.post("/models", status_code=201)
     async def import_model(request: Request):
@@ -49,8 +89,11 @@ def create_app(manager=None):
                         raise ValueError("Maximum checkpoint size is 2 MB")
                     output.write(chunk)
             await asyncio.to_thread(load_checkpoint, path)
+            name = unquote(request.headers.get("X-Model-Name", "MNIST MLP"))[:80]
+            name = "".join(c for c in name if c.isprintable()).strip() or "MNIST MLP"
+            (model_root / (identity + ".json")).write_text(json.dumps({"name": name}), encoding="utf-8")
             path.rename(model_root / (identity + ".pt"))
-            return {"id": identity, "name": "MNIST MLP", "bytes": size}
+            return {"id": identity, "name": name, "bytes": size}
         except Exception as exc:
             path.unlink(missing_ok=True)
             raise HTTPException(422, detail="Checkpoint rejected: expected a valid MNIST MLP float32 state_dict") from exc
@@ -58,8 +101,11 @@ def create_app(manager=None):
     @app.get("/experiments")
     def saved_experiments():
         rows = []
-        for path in sorted(sessions.root.glob("*/results.json"), reverse=True)[:100]:
-            result = json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(sessions.root.glob("*/results.json"), key=lambda p: p.stat().st_mtime, reverse=True)[:100]:
+            try:
+                result = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
             rows.append({"id": path.parent.name, "config": result["config"],
                          "initial": result["initial"], "retained": result["retained"]})
         return rows
@@ -83,7 +129,7 @@ def create_app(manager=None):
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "model": "analytical-xor", "scope": "local-demo"}
+        return {"status": "ok", "scope": "local-single-user"}
 
     @app.get("/inspect")
     def inspect():
@@ -117,7 +163,15 @@ def create_app(manager=None):
     @app.post("/sessions", status_code=201)
     def create_session(config: dict):
         try:
-            return sessions.create(RunConfig(**config)).snapshot()
+            parsed = RunConfig(**config)
+            if parsed.provider == "openai" and not capabilities()["llm_configured"]:
+                raise ValueError("Configure the LLM provider in backend environment first")
+            if parsed.model_id != "xor":
+                if not (model_root / f"{parsed.model_id}.pt").is_file():
+                    raise ValueError("Import a supported checkpoint first")
+                if not capabilities()["mnist_data_ready"]:
+                    raise ValueError("MNIST data missing. Run python -m weightforge.mnist --download")
+            return sessions.create(parsed).snapshot()
         except (ValueError, TypeError) as exc:
             raise HTTPException(422, detail=str(exc)) from exc
 
@@ -166,18 +220,5 @@ def create_app(manager=None):
 
         return StreamingResponse(stream(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
-
-    static = Path(__file__).parent / "static"
-    if static.is_dir():
-        app.mount("/static", StaticFiles(directory=static), name="static")
-
-        @app.get("/", include_in_schema=False)
-        def dashboard():
-            return FileResponse(static / "index.html")
-
-        @app.get("/library", include_in_schema=False)
-        @app.get("/results", include_in_schema=False)
-        def library():
-            return FileResponse(static / "library.html")
 
     return app

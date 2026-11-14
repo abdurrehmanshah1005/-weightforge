@@ -4,11 +4,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import * as labState from '../src/weightforge/static/lab-state.mjs';
+import * as labState from '../frontend/public/lab-state.mjs';
 
-const code = fs.readFileSync(new URL('../src/weightforge/static/app.js', import.meta.url), 'utf8')
-  .replace(/^import .*?;\n/, 'const { initialState, applyEvent, chartData, baselineSummary, isBusy } = labState;\n');
-const html = fs.readFileSync(new URL('../src/weightforge/static/index.html', import.meta.url), 'utf8');
+const code = fs.readFileSync(new URL('../frontend/public/app.js', import.meta.url), 'utf8')
+  .replace(/^import .*?;\r?\n/, 'const { initialState, applyEvent, chartData, baselineSummary, isBusy } = labState;\n');
+const html = fs.readFileSync(new URL('../frontend/public/experiment.html', import.meta.url), 'utf8');
 
 class Element {
   constructor(tag = 'div') {
@@ -43,8 +43,8 @@ async function harness(healthy = true) {
     createTextNode: text => ({ textContent: text }) };
   const context = { document, labState, EventSource: Source, localStorage: { getItem: () => null, setItem() {} },
     Event: class { constructor(type) { this.type = type; } },
-    fetch: async path => ({ ok: healthy || path !== '/health', status: healthy ? 200 : 503,
-      json: async () => path === '/sessions' ? { id: 'test-session' } : {} }) };
+    fetch: async path => ({ ok: healthy || path !== '/api/health', status: healthy ? 200 : 503,
+      json: async () => path === '/api/sessions' ? { id: 'test-session' } : {} }) };
   vm.runInNewContext(code, context, { filename: 'app.js' });
   await new Promise(resolve => setImmediate(resolve));
   return { elements, streams };
@@ -79,7 +79,7 @@ test('controls, SSE, decision table, review, export and reset are wired together
   stream.emit({ id: 5, stage: 'completed', elapsed_ms: 5, result });
   assert.equal(stream.closed, true);
   assert.equal(e.get('start').disabled, false);
-  assert.equal(e.get('download').href, '/sessions/test-session/results');
+  assert.equal(e.get('download').href, '/api/sessions/test-session/results');
   assert.equal(e.get('comparison-content').children.length, 3);
   e.get('review').listeners.click();
   assert.equal(e.get('decision-tag').textContent, 'Accepted');

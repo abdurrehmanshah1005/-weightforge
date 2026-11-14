@@ -1,9 +1,16 @@
 services:
-  weightforge:
-    build: .
-    image: weightforge:local
+  frontend:
+    build: ./frontend
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8000:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+  backend:
+    build: .
     volumes:
       - weightforge-runs:/data/runs
       - ./runs/data:/data/datasets:ro
@@ -11,13 +18,12 @@ services:
       WEIGHTFORGE_RUNS_DIR: /data/runs
       WEIGHTFORGE_MODELS_DIR: /data/runs/models
       WEIGHTFORGE_DATA_DIR: /data/datasets
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      WEIGHTFORGE_LLM_MODEL: ${WEIGHTFORGE_LLM_MODEL:-}
     init: true
-    stop_grace_period: 30s
+    stop_grace_period: 45s
     restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
 volumes:
   weightforge-runs:

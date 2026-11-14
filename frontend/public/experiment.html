@@ -5,37 +5,38 @@
   <meta name="description" content="Watch sparse weight edits earn their place. A live, local WeightForge experiment workspace.">
   <title>WeightForge · Experiment lab</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%231b2926'/%3E%3Cpath d='m7 12 6 17 7-12 7 12 6-17' fill='none' stroke='%239fe2c3' stroke-width='3'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/workspace.css">
   <script type="module" src="/static/app.js"></script>
 </head>
 <body>
 <aside class="sidebar">
   <a class="brand" href="/" aria-label="WeightForge home"><span class="brand-mark">W</span>WeightForge<span class="version">LAB</span></a>
-  <div class="nav-label">WORKSPACE</div><a class="nav" href="/library">Model library</a><a class="nav" href="/results">Saved results</a>
-  <a class="nav active" href="#workspace"><span>◈</span> Experiment lab <span class="nav-dot"></span></a>
+  <div class="nav-label">WORKSPACE</div><a class="nav" href="/">Overview</a><a class="nav" href="/settings">Proposal providers</a><a class="nav" href="/models">Model library</a><a class="nav" href="/runs">Saved results</a>
+  <a class="nav active" href="/experiment"><span>◈</span> Experiment lab <span class="nav-dot"></span></a>
   <a class="nav" href="#history"><span>≡</span> Edit history</a>
   <a class="nav" href="#comparison"><span>⌁</span> Baseline comparison</a>
   <div class="sidebar-note"><span class="tiny-label">THE QUESTION</span><p>Can a small weight edit make a measurable difference?</p><span>Propose. Measure. Keep only what works.</span></div>
-  <div class="sidebar-bottom"><span class="live-dot"></span> Local CPU workspace<br><span>Research MVP · XOR demonstration</span><a href="/docs" target="_blank" rel="noopener">Explore the API ↗</a></div>
+  <div class="sidebar-bottom"><span class="live-dot"></span> Local CPU workspace<br><span>Local research workspace</span><a href="/api/docs" target="_blank" rel="noopener">Explore the API ↗</a></div>
 </aside>
 <main id="workspace">
+  <nav class="mobile-nav" aria-label="Workspace"><a href="/">Overview</a><a href="/models">Models</a><a href="/experiment">Experiment</a><a href="/runs">Runs</a><a href="/settings">Providers</a></nav>
   <header class="topbar"><span>Research / <strong>Experiment lab</strong></span><span class="connection" id="connection">Connecting…</span></header>
   <section class="heading"><div><div class="eyebrow">SMALL EDITS. MEASURABLE EVIDENCE.</div><h1>Make every edit<br class="mobile-break"> prove itself<span>.</span></h1><p>Watch a model change, measure the result, and keep the improvements.</p></div><div class="model-tag"><span class="model-icon">⠿</span><div>Analytical XOR<span>9 parameters · CPU · binary classifier</span></div></div></section>
 
   <form id="controls" class="panel controls">
-    <div class="field wide"><label for="provider">Proposal source</label><select id="provider"><option value="guided">Guided demonstration</option><option value="random">Seeded random search</option></select></div>
+    <div class="field wide"><label for="provider">Proposal source</label><select id="provider"><option value="guided">Guided calibration</option><option value="demo">XOR walkthrough</option><option value="openai">OpenAI proposals</option><option value="random">Seeded random search</option></select></div>
     <div class="field"><label for="budget">Proposals</label><input id="budget" type="number" min="1" max="50" value="12" required></div>
     <div class="field"><label for="seed">Seed</label><input id="seed" type="number" min="0" max="2147483647" value="42" required></div>
     <div class="field"><label for="random-runs">Baseline trials</label><input id="random-runs" type="number" min="1" max="10" value="3" required></div>
     <div class="run-actions"><button class="primary" id="start" type="submit"><span>▶</span> Start experiment</button><button class="stop" id="stop" type="button" disabled>Stop</button></div>
     <details class="advanced"><summary>Edit limits</summary><div><label>Max cumulative delta <input id="max-delta" type="number" min="0.01" max="2" step="0.01" value="2" required></label><label>Max changed scalars <input id="max-changed" type="number" min="1" max="9" value="8" required></label></div></details>
-    <p id="provider-note" class="disclosure">Guided mode uses a declared bias-edit heuristic, then tests its reversal. It is not an LLM.</p>
+    <label class="disclosure"><input type="checkbox" id="llm-consent"> For OpenAI runs, I agree to send validation observations and incur API charges.</label><p id="provider-note" class="disclosure">Guided calibration uses validation probability errors to propose output-bias edits. It is not an LLM.</p>
   </form>
   <div id="error" class="error" role="alert" hidden></div>
 
   <section class="stats" aria-label="Current validation metrics">
     <article><span class="tiny-label">RETAINED VALIDATION LOSS <span title="Binary cross-entropy. Lower is better.">↘</span></span><div><strong id="loss">—</strong><span id="loss-change" class="stat-change">Waiting for first run</span></div><p id="loss-before">An edit must reduce loss to stay.</p></article>
-    <article><span class="tiny-label">RETAINED VALIDATION ACCURACY <span>◎</span></span><div><strong id="accuracy">—</strong><span id="accuracy-change" class="stat-change">No regression allowed</span></div><p id="accuracy-before">Correct predictions on 128 validation points.</p></article>
+    <article><span class="tiny-label">RETAINED VALIDATION ACCURACY <span>◎</span></span><div><strong id="accuracy">—</strong><span id="accuracy-change" class="stat-change">No regression allowed</span></div><p id="accuracy-before">Correct predictions on the validation split.</p></article>
     <article><span class="tiny-label">ACCEPTED / TESTED EDITS <span>⇄</span></span><div><strong id="accepted">0 <small>/ 0</small></strong><span id="rollback-count" class="stat-change">0 rolled back</span></div><p>Rejected candidates leave the incumbent intact.</p></article>
   </section>
 
@@ -49,9 +50,9 @@
 
   <section class="panel history" id="history"><div class="panel-heading"><div><span class="tiny-label">THE EXPERIMENT LOG</span><h2>Every decision, in the open.</h2></div><div class="history-actions"><button type="button" class="quiet" id="review" disabled>Review first edit</button><a id="download" class="quiet disabled" aria-disabled="true">Download results ↓</a></div></div><div class="table-scroll"><table><thead><tr><th>STEP</th><th>PROPOSED EDIT</th><th>CANDIDATE LOSS</th><th>RETAINED LOSS</th><th>DECISION</th><th>REASON</th></tr></thead><tbody id="history-rows"><tr><td colspan="6" class="empty">Your next experiment starts here. No edits have been made.</td></tr></tbody></table></div><div class="event-strip"><span class="live-dot"></span><span id="event-message" role="status">Waiting for a real experiment event.</span><span id="event-count">0 events</span></div></section>
 
-  <section class="panel comparison" id="comparison"><div class="panel-heading"><div><span class="tiny-label">AFTER THE SEARCH</span><h2>Put the result in perspective.</h2></div><span class="pill" id="holdout-tag">Holdout sealed</span></div><p class="muted">The separate 512-point holdout is evaluated only after all searches finish. Random trials use the same budget and edit limits.</p><div id="comparison-content" class="comparison-empty"><span>⌁</span><div><strong>Evidence comes after the experiment.</strong><p>Final holdout performance and the complete random distribution will appear here.</p></div></div></section>
+  <section class="panel comparison" id="comparison"><div class="panel-heading"><div><span class="tiny-label">AFTER THE SEARCH</span><h2>Put the result in perspective.</h2></div><span class="pill" id="holdout-tag">Holdout sealed</span></div><p class="muted">The separate holdout is evaluated only after all searches finish. Random trials use the same budget and edit limits.</p><div id="comparison-content" class="comparison-empty"><span>⌁</span><div><strong>Evidence comes after the experiment.</strong><p>Final holdout performance and the complete random distribution will appear here.</p></div></div></section>
 
-  <footer><span>WeightForge <b>·</b> Measure first. Keep what works.</span><span>Tiny XOR fixture. No training, LLM or large-model capability claim. <a href="/docs" target="_blank" rel="noopener">API ↗</a></span></footer>
+  <footer><span>WeightForge <b>·</b> Measure first. Keep what works.</span><span>Measured changes are not a guarantee of general improvement. <a href="/api/docs" target="_blank" rel="noopener">API ↗</a></span></footer>
 </main>
 </body>
 </html>

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { initialState, applyEvent, chartData, baselineSummary, isBusy } from '../src/weightforge/static/lab-state.mjs';
+import { initialState, applyEvent, chartData, baselineSummary, isBusy } from '../frontend/public/lab-state.mjs';
 
 test('candidate evaluation never replaces the retained model', () => {
   let state = applyEvent(initialState(), { id: 1, stage: 'started', elapsed_ms: 1, initial: { loss: .4, accuracy: .6 } });

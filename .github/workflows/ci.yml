@@ -32,7 +32,7 @@ jobs:
       - name: Verify packaged dashboard and real inference
         shell: bash
         run: |
-          curl --fail http://127.0.0.1:8000/ | grep 'Make every edit'
+          curl --fail http://127.0.0.1:8000/ | grep 'Your model.'
           curl --fail http://127.0.0.1:8000/static/app.js > /dev/null
           python3 scripts/container_smoke.py
       - if: always()

@@ -12,10 +12,13 @@ let reviewIndex = 0;
 let connected = false;
 const modelId = typeof location === 'undefined' ? 'xor' : new URLSearchParams(location.search).get('model') || 'xor';
 if (modelId !== 'xor') {
-  $('provider').value = 'random';
-  $('provider').querySelector('option[value="guided"]').disabled = true;
+  $('provider').value = 'guided';
+  $('provider').querySelector('option[value="demo"]').disabled = true;
   document.querySelector('.model-tag').textContent = 'MNIST MLP · 50,890 parameters';
 }
+const requestedProvider = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('provider');
+if (['guided', 'random', 'openai', ...(modelId === 'xor' ? ['demo'] : [])].includes(requestedProvider)) $('provider').value = requestedProvider;
+const sessionKey = `weightforge-session-${modelId}`;
 const configIds = ['provider', 'budget', 'seed', 'random-runs', 'max-delta', 'max-changed'];
 
 function showError(message) {
@@ -24,7 +27,7 @@ function showError(message) {
 }
 
 async function request(path, options = {}) {
-  const response = await fetch(path, options);
+  const response = await fetch('/api' + path, options);
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(typeof body.detail === 'string' ? body.detail : `Request failed (${response.status})`);
@@ -41,7 +44,7 @@ function setConnection(ok, label) {
 
 function subscribe(id) {
   if (source) source.close();
-  source = new EventSource(`/sessions/${encodeURIComponent(id)}/events?after=${state.lastId}`);
+  source = new EventSource(`/api/sessions/${encodeURIComponent(id)}/events?after=${state.lastId}`);
   source.onopen = () => setConnection(true, 'Connected · local CPU');
   source.addEventListener('update', message => {
     const event = JSON.parse(message.data);
@@ -73,7 +76,7 @@ $('controls').addEventListener('submit', async event => {
   if (isBusy(state)) return;
   showError('');
   $('start').disabled = true;
-  const config = { provider: $('provider').value, budget: Number($('budget').value),
+  const config = { provider: $('provider').value, llm_consent: Boolean(document.getElementById('llm-consent')?.checked), budget: Number($('budget').value),
     model_id: modelId,
     seed: Number($('seed').value), random_runs: Number($('random-runs').value),
     max_delta: Number($('max-delta').value), max_changed: Number($('max-changed').value) };
@@ -85,7 +88,7 @@ $('controls').addEventListener('submit', async event => {
     sessionId = run.id;
     selected = null;
     reviewIndex = 0;
-    try { localStorage.setItem('weightforge-session', sessionId); } catch { /* Private browsing. */ }
+    try { localStorage.setItem(sessionKey, sessionId); } catch { /* Private browsing. */ }
     render();
     subscribe(sessionId);
   } catch (error) {
@@ -103,9 +106,9 @@ $('stop').addEventListener('click', async () => {
 });
 
 $('provider').addEventListener('change', () => {
-  $('provider-note').textContent = $('provider').value === 'guided'
-    ? 'Guided mode uses a declared bias-edit heuristic, then tests its reversal. It is not an LLM.'
-    : 'Random mode samples visible coordinates with a seeded generator. Improvements are not guaranteed.';
+  $('provider-note').textContent = $('provider').value === 'demo'
+    ? 'Scripted XOR walkthrough: lower the bias, then test its reversal. This is a demonstration, not discovery.'
+    : ({guided:'Guided calibration corrects validation output-probability bias. No LLM or backpropagation.',random:'Seeded random sparse edits; improvements are not guaranteed.',openai:'Sends bounded validation observations to OpenAI. API charges apply; no holdout is sent.'}[$('provider').value]);
 });
 
 for (const [id, value] of [['show-loss', 'loss'], ['show-accuracy', 'accuracy']]) {
@@ -160,7 +163,7 @@ function render() {
     $('loss-change').textContent = 'Waiting for first run';
     $('accuracy-change').textContent = 'No regression allowed';
     $('loss-before').textContent = 'An edit must reduce loss to stay.';
-    $('accuracy-before').textContent = 'Correct predictions on 128 validation points.';
+    $('accuracy-before').textContent = `Correct predictions on ${modelId === 'xor' ? 128 : 1000} validation points.`;
   }
   const accepted = state.decisions.filter(row => row.accepted).length;
   $('accepted').replaceChildren(document.createTextNode(`${accepted} `), Object.assign(document.createElement('small'), { textContent: `/ ${state.decisions.length}` }));
@@ -170,7 +173,7 @@ function render() {
   $('event-count').textContent = `${state.events.length} events`;
   $('download').classList.toggle('disabled', state.status !== 'completed');
   $('download').setAttribute('aria-disabled', String(state.status !== 'completed'));
-  if (state.status === 'completed') $('download').href = `/sessions/${sessionId}/results`;
+  if (state.status === 'completed') $('download').href = `/api/sessions/${sessionId}/results`;
   else $('download').removeAttribute('href');
   drawChart();
   renderInspector();
@@ -305,7 +308,7 @@ function renderComparison() {
   }
   let list = $('baseline-distribution');
   if (!list) { list = document.createElement('div'); list.id = 'baseline-distribution'; list.className = 'baseline-list'; target.after(list); }
-  list.textContent = `Every random trial (holdout loss): ${result.random_baselines.map((r, i) => `#${i + 1} seed ${r.seed}: ${number(r.holdout.loss)}`).join(' · ')}. Same one-edit proposals, budget and limits. Guided mode has fixture-specific prior knowledge. Neighborhood XOR results do not establish large-model or LLM capability.`;
+  list.textContent = `Every random trial (holdout loss): ${result.random_baselines.map((r, i) => `#${i + 1} seed ${r.seed}: ${number(r.holdout.loss)}`).join(' · ')}. Same one-edit proposals, budget and limits. Calibration uses output residuals; random search samples visible prefix coordinates. These are different search strategies, not evidence of general model repair.`;
 }
 
 async function initialize() {
@@ -315,8 +318,8 @@ async function initialize() {
     await request('/health');
     setConnection(true, 'Connected · local CPU');
     let saved;
-    try { saved = localStorage.getItem('weightforge-session'); } catch { /* Optional persistence. */ }
-    if (saved && modelId === 'xor') {
+    try { saved = localStorage.getItem(sessionKey); } catch { /* Optional persistence. */ }
+    if (saved && !requestedProvider) {
       try {
         const run = await request(`/sessions/${encodeURIComponent(saved)}`);
         sessionId = run.id;
@@ -325,7 +328,7 @@ async function initialize() {
         $('provider').dispatchEvent(new Event('change'));
         state.status = 'queued';
         subscribe(saved);
-      } catch { try { localStorage.removeItem('weightforge-session'); } catch { /* Optional. */ } }
+      } catch { try { localStorage.removeItem(sessionKey); } catch { /* Optional. */ } }
     }
   } catch {
     setConnection(false, 'Service unavailable');
