@@ -10,6 +10,12 @@ let metric = 'loss';
 let selected = null;
 let reviewIndex = 0;
 let connected = false;
+const modelId = typeof location === 'undefined' ? 'xor' : new URLSearchParams(location.search).get('model') || 'xor';
+if (modelId !== 'xor') {
+  $('provider').value = 'random';
+  $('provider').querySelector('option[value="guided"]').disabled = true;
+  document.querySelector('.model-tag').textContent = 'MNIST MLP · 50,890 parameters';
+}
 const configIds = ['provider', 'budget', 'seed', 'random-runs', 'max-delta', 'max-changed'];
 
 function showError(message) {
@@ -68,6 +74,7 @@ $('controls').addEventListener('submit', async event => {
   showError('');
   $('start').disabled = true;
   const config = { provider: $('provider').value, budget: Number($('budget').value),
+    model_id: modelId,
     seed: Number($('seed').value), random_runs: Number($('random-runs').value),
     max_delta: Number($('max-delta').value), max_changed: Number($('max-changed').value) };
   try {
@@ -147,7 +154,7 @@ function render() {
     $('loss-before').textContent = `Started at ${number(state.initial.loss)} · lower is better`;
     $('accuracy').textContent = percent(state.retained.accuracy);
     $('accuracy-change').textContent = `+${((state.retained.accuracy - state.initial.accuracy) * 100).toFixed(1)} pts`;
-    $('accuracy-before').textContent = `Started at ${percent(state.initial.accuracy)} · 128 validation points`;
+    $('accuracy-before').textContent = `Started at ${percent(state.initial.accuracy)} · ${modelId === 'xor' ? 128 : 1000} validation points`;
   } else {
     $('loss').textContent = $('accuracy').textContent = '—';
     $('loss-change').textContent = 'Waiting for first run';
@@ -302,12 +309,14 @@ function renderComparison() {
 }
 
 async function initialize() {
+  $('provider').dispatchEvent(new Event('change'));
+  if (modelId !== 'xor') document.querySelector('.comparison .muted').textContent = 'The separate 2,000-example MNIST test subset is evaluated after all searches finish. All trials start from your imported checkpoint.';
   try {
     await request('/health');
     setConnection(true, 'Connected · local CPU');
     let saved;
     try { saved = localStorage.getItem('weightforge-session'); } catch { /* Optional persistence. */ }
-    if (saved) {
+    if (saved && modelId === 'xor') {
       try {
         const run = await request(`/sessions/${encodeURIComponent(saved)}`);
         sessionId = run.id;
