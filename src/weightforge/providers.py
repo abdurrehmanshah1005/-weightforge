@@ -64,15 +64,33 @@ class ManualLLMProvider:
 
 
 class CalibrationProvider:
-    """Task-aware output-bias calibration, not an LLM and not backpropagation."""
+    """Validation-only output-bias search with per-coordinate rejection backoff.
+
+    Create one provider per search. Rejected steps halve that coordinate's cap;
+    ranking the remaining bounded deltas can select another output class instead.
+    """
+
+    def __init__(self):
+        self.caps = {}
+        self.previous = None
 
     def propose(self, observation):
+        decisions = observation.get("recent_decisions", [])
+        if self.previous is not None and decisions and not decisions[-1]["accepted"]:
+            key, delta = self.previous
+            self.caps[key] = abs(delta) / 2
         diagnostic = observation["diagnostics"]
+        bias = diagnostic["output_bias"]
         residuals = diagnostic["mean_target_minus_probability"]
-        index = max(range(len(residuals)), key=lambda i: abs(residuals[i]))
-        delta = max(-observation["max_delta"], min(observation["max_delta"], residuals[index]))
-        return {"reason": "Correct the largest validation output-probability bias",
-                "edits": [{"parameter": diagnostic["output_bias"], "index": index, "delta": delta}]}
+        deltas = []
+        for index, residual in enumerate(residuals):
+            cap = min(observation["max_delta"], self.caps.get((bias, index), float("inf")))
+            deltas.append(max(-cap, min(cap, residual)))
+        index = max(range(len(deltas)), key=lambda i: abs(deltas[i]))
+        delta = deltas[index]
+        self.previous = ((bias, index), delta)
+        return {"reason": "Validation output-bias calibration with rejection backoff",
+                "edits": [{"parameter": bias, "index": index, "delta": delta}]}
 
 
 PROPOSAL_SCHEMA = {

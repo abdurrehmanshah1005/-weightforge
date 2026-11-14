@@ -28,3 +28,8 @@ Live sessions expire after restart; completed reports remain in Saved runs.
 The frontend is in `frontend/`, independent of the Python package. Browser traffic
 uses `/api/` through the frontend proxy; API keys stay in the backend environment.
 For local `.env` loading, use `uv run --env-file .env` as shown in the README.
+
+
+Guided calibration now halves a rejected coordinate's step cap and ranks the
+remaining bounded output-bias corrections. Each run starts with fresh caps. This
+uses validation decisions only; it does not consult holdout or guarantee generalization.

@@ -17,6 +17,27 @@ class ProviderTests(unittest.TestCase):
             "output_bias": "3.bias", "mean_target_minus_probability": [.1, -.7, .3]}})
         self.assertEqual(proposal["edits"], [{"parameter": "3.bias", "index": 1, "delta": -.2}])
 
+    def test_rejection_halves_the_actual_clipped_step(self):
+        provider = CalibrationProvider()
+        observation = {"max_delta": .2, "diagnostics": {
+            "output_bias": "3.bias", "mean_target_minus_probability": [.8]}}
+        self.assertEqual(provider.propose(observation)["edits"][0]["delta"], .2)
+        observation["recent_decisions"] = [{"accepted": False}]
+        self.assertEqual(provider.propose(observation)["edits"][0]["delta"], .1)
+        self.assertEqual(provider.propose(observation)["edits"][0]["delta"], .05)
+
+    def test_rejection_can_switch_coordinates_without_holdout(self):
+        provider = CalibrationProvider()
+        observation = {"max_delta": 2, "diagnostics": {
+            "output_bias": "3.bias", "mean_target_minus_probability": [.2, -.15]}}
+        self.assertEqual(provider.propose(observation)["edits"][0]["index"], 0)
+        observation["recent_decisions"] = [{"accepted": False}]
+        self.assertEqual(provider.propose(observation)["edits"][0]["index"], 1)
+        observation["recent_decisions"] = [{"accepted": True}]
+        self.assertEqual(provider.propose(observation)["edits"][0]["delta"], -.15)
+        fresh = CalibrationProvider()
+        self.assertEqual(fresh.propose(observation)["edits"][0]["index"], 0)
+
     def test_explicit_consent(self):
         for consent in (False, "yes", 1):
             with self.assertRaises(ValueError):

@@ -166,3 +166,8 @@ requires authentication/authorization, TLS, isolated resource-limited uploads an
 workers, quotas, recovery, backups and operational validation. The present adapter
 does not support tied, quantized, sharded or offloaded transformer weights; no 7B
 model support or general capability improvement is claimed.
+
+
+Guided calibration now halves a rejected coordinate's step cap and ranks the
+remaining bounded output-bias corrections. Each run starts with fresh caps. This
+uses validation decisions only; it does not consult holdout or guarantee generalization.

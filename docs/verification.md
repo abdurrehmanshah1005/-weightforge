@@ -134,3 +134,12 @@ The initial failing test found an undeclared NumPy dependency in fixture hashing
 hashing now uses the fixed fixture's JSON values. No failures remain. Linux CI is
 configured but has not run on GitHub; no CUDA, trained-model benchmark, large-model
 memory measurement, 7B model, or hosted/manual LLM result has been verified.
+
+
+## Rejection-aware calibration
+
+The first real MNIST report accepted seven edits but repeated the same rejected
+proposal five times. Calibration now uses per-coordinate rejection backoff. Eight
+provider tests passed locally, including clipped-step halving, coordinate switching,
+acceptance behavior and fresh-run isolation. Real MNIST and full native Python
+checks remain pending; this change does not establish holdout improvement.

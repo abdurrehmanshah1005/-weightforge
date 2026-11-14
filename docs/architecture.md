@@ -102,3 +102,8 @@ fail the run rather than switching algorithms.
 Completed results are published by atomic file replacement before the completed
 event. A retained full checkpoint is written once at final export, not copied per
 edit. Saved-report routes work after restart; in-flight jobs are not resumed.
+
+
+Guided calibration now halves a rejected coordinate's step cap and ranks the
+remaining bounded output-bias corrections. Each run starts with fresh caps. This
+uses validation decisions only; it does not consult holdout or guarantee generalization.
